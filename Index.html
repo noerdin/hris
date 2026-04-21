@@ -815,6 +815,13 @@
                 <div class="fld"><label>Kandidat ID (opsional)</label>
                   <input type="text" id="psi-knd-id" placeholder="Kosongkan jika tidak dari pipeline"></div>
               </div>
+              <div class="fg" style="margin-top:10px;">
+                <div class="fld">
+                  <label>Tanggal Lahir Peserta <span style="font-size:.65rem;color:var(--orange);font-weight:400;">(Wajib untuk scoring IST)</span></label>
+                  <input type="date" id="psi-tgllahir">
+                  <div class="fhint"><i class="fas fa-info-circle" style="color:var(--blue);"></i> Digunakan untuk menentukan norma usia pada konversi skor IST.</div>
+                </div>
+              </div>
             </div>
 
             <!-- URL Web App IST -->
@@ -1244,8 +1251,16 @@
           <div class="fhint"><i class="fas fa-info-circle" style="color:var(--blue);"></i> Upload CV ke Google Drive, lalu paste link share-nya di sini.</div>
         </div>
       </div>
-      <div class="fg" style="margin-top:12px;">
-        <div class="fld"><label>Tanggal Daftar</label><input type="date" id="knd-tgl"></div>
+      <div class="fg g2" style="margin-top:12px;">
+        <div class="fld">
+          <label>Tanggal Daftar</label>
+          <input type="date" id="knd-tgl">
+        </div>
+        <div class="fld">
+          <label>Tanggal Lahir <span style="font-size:.65rem;color:var(--orange);font-weight:400;">(Wajib untuk Tes IST)</span></label>
+          <input type="date" id="knd-tgllahir">
+          <div class="fhint"><i class="fas fa-info-circle" style="color:var(--blue);"></i> Diperlukan untuk menghitung usia pada scoring psikotes IST.</div>
+        </div>
       </div>
       <div id="knd-msg"></div>
     </div>
@@ -1385,7 +1400,16 @@ function loadK() {
       filterK();
       renderPkwt();
     })
-    .withFailureHandler(function(){hideLd();allK=[];renderK([]);})
+    .withFailureHandler(function(err){
+      hideLd();
+      allK = [];
+      renderK([]);
+      updateStats(); // ← ini yang kurang, agar stats berubah dari "--" ke "0"
+      // Tampilkan pesan error di dashboard
+      var banner = document.querySelector('.db-p');
+      if (banner) banner.innerHTML = '<span style="color:#fca5a5;"><i class="fas fa-exclamation-triangle"></i> Gagal memuat data. Cek koneksi atau re-deploy Web App.</span>';
+      console.error('loadK GAGAL:', err);
+    })
     .getSemuaKaryawan();
 }
 
@@ -1975,8 +1999,25 @@ function renderPkwt(){
 function openMo(id){document.getElementById(id).classList.add('show');}
 function closeMo(id){document.getElementById(id).classList.remove('show');}
 document.querySelectorAll('.mo').forEach(function(el){el.addEventListener('click',function(e){if(e.target===el)el.classList.remove('show');});});
-function showLd(m){document.getElementById('ld-msg').textContent=m||'Memuat...';document.getElementById('ld').classList.add('show');}
-function hideLd(){document.getElementById('ld').classList.remove('show');}
+var _ldTimeout = null; // variabel untuk menyimpan timer loading
+
+function showLd(m) {
+  // Tampilkan loading overlay
+  document.getElementById('ld-msg').textContent = m || 'Memuat...';
+  document.getElementById('ld').classList.add('show');
+  // Paksa sembunyikan setelah 12 detik agar tidak memblokir UI selamanya
+  if (_ldTimeout) clearTimeout(_ldTimeout);
+  _ldTimeout = setTimeout(function() {
+    hideLd();
+    console.warn('Loading timeout — overlay dipaksa sembunyikan');
+  }, 12000);
+}
+
+function hideLd() {
+  // Sembunyikan loading overlay & batalkan timer timeout
+  if (_ldTimeout) { clearTimeout(_ldTimeout); _ldTimeout = null; }
+  document.getElementById('ld').classList.remove('show');
+}
 
 // ================================================================
 //  FASE 2: REKRUTMEN & ATS — JavaScript
@@ -2280,7 +2321,8 @@ function openTambahKandidat() {
 
   // Reset form
   ['knd-nama','knd-hp','knd-email','knd-cv'].forEach(function(id){ document.getElementById(id).value=''; });
-  document.getElementById('knd-tgl').value = new Date().toISOString().split('T')[0];
+  document.getElementById('knd-tgl').value       = new Date().toISOString().split('T')[0];
+  document.getElementById('knd-tgllahir').value   = '';
   document.getElementById('knd-sumber').value = 'Jobstreet';
   document.getElementById('knd-msg').innerHTML = '';
   openMo('mo-knd');
@@ -2321,7 +2363,8 @@ function submitTambahKandidat() {
       email:       document.getElementById('knd-email').value.trim(),
       sumber:      document.getElementById('knd-sumber').value,
       linkCv:      cv,
-      tglDaftar:   document.getElementById('knd-tgl').value
+      tglDaftar:   document.getElementById('knd-tgl').value,
+      tglLahir:    document.getElementById('knd-tgllahir').value
     });
 }
 
@@ -2653,7 +2696,19 @@ function previewKandidatPsi() {
   if (idx===''||!psiKndData[idx]) { document.getElementById('psi-knd-preview').style.display='none'; return; }
   var r = psiKndData[idx];
   document.getElementById('psi-knd-preview-grid').innerHTML =
-    [['Nama',r[4]],['No. HP',r[5]],['Email',r[6]],['Posisi',r[2]],['Departemen',r[3]],['Sumber',r[7]]].map(function(f){
+    // Hitung usia dari tgl lahir kandidat (index 35)
+    var tglLahirKnd = r[35] ? r[35].toString().trim() : '';
+    var usiaKnd     = '-';
+    if (tglLahirKnd) {
+      var dL = pfd(tglLahirKnd);
+      if (dL) {
+        var th = new Date().getFullYear() - dL.getFullYear();
+        var bl = new Date().getMonth()    - dL.getMonth();
+        if (bl < 0 || (bl === 0 && new Date().getDate() < dL.getDate())) th--;
+        usiaKnd = th + ' tahun (lahir ' + ftj(dL) + ')';
+      }
+    }
+    [['Nama',r[4]],['No. HP',r[5]],['Email',r[6]],['Posisi',r[2]],['Departemen',r[3]],['Sumber',r[7]],['Usia',usiaKnd]].map(function(f){
       return '<div style="padding:7px 10px;background:var(--card);border-radius:8px;">'
         +'<div style="font-size:.65rem;font-weight:700;text-transform:uppercase;color:var(--t3);">'+f[0]+'</div>'
         +'<div style="font-size:.82rem;font-weight:600;">'+(f[1]||'-')+'</div></div>';
@@ -2669,12 +2724,27 @@ function submitGenerateToken() {
     var idx = document.getElementById('psi-knd-sel').value;
     if (idx==='') { alert('Pilih kandidat terlebih dahulu.'); return; }
     var r = psiKndData[idx];
-    payload = { kandidatId:r[0]||'', mppId:r[1]||'', nama:r[4]||'', email:r[6]||'', posisi:r[2]||'' };
+    // Index 35 = TGL LAHIR dari HEADERS_KANDIDAT
+    payload = { 
+      kandidatId: r[0]||'', 
+      mppId:      r[1]||'', 
+      nama:       r[4]||'', 
+      email:      r[6]||'', 
+      posisi:     r[2]||'',
+      tglLahir:   r[35] ? r[35].toString() : ''  // untuk scoring IST
+    };
   } else {
     var nama = document.getElementById('psi-nama').value.trim();
     var pos  = document.getElementById('psi-posisi').value.trim();
     if (!nama||!pos) { alert('Nama dan Posisi wajib diisi.'); return; }
-    payload = { kandidatId:document.getElementById('psi-knd-id').value.trim(), mppId:'', nama:nama, email:document.getElementById('psi-email').value.trim(), posisi:pos };
+    payload = { 
+      kandidatId: document.getElementById('psi-knd-id').value.trim(), 
+      mppId:      '', 
+      nama:       nama, 
+      email:      document.getElementById('psi-email').value.trim(), 
+      posisi:     pos,
+      tglLahir:   document.getElementById('psi-tgllahir').value  // untuk scoring IST
+    };
   }
   var genBtn = event ? event.target.closest('button') : null;
   if (genBtn) { genBtn.disabled = true; genBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Membuat...'; }
@@ -2721,7 +2791,7 @@ function salinWA() {
 function resetFormToken() {
   document.getElementById('psi-token-result').style.display='none';
   document.getElementById('psi-gen-msg').innerHTML='';
-  ['psi-knd-sel','psi-nama','psi-email','psi-posisi','psi-knd-id'].forEach(function(id){
+  ['psi-knd-sel','psi-nama','psi-email','psi-posisi','psi-knd-id','psi-tgllahir'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('psi-knd-preview').style.display='none';
