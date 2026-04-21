@@ -76,7 +76,8 @@ var HEADERS_KANDIDAT = [
   "CATATAN OFFERING",// 31
   "TGL HIRED",      // 32
   "TERAKHIR DIUPDATE",// 33
-  "TIMESTAMP INPUT" // 34
+  "TIMESTAMP INPUT", // 34
+  "TGL LAHIR"        // 35 — untuk scoring IST
 ];
 
 // Header db_karyawan — sama persis dengan v2.1 (index 0–20)
@@ -1161,6 +1162,7 @@ function tambahKandidat(dataForm) {
     var kndId   = generateKandidatId(sheet);
     var now     = formatTimestamp(new Date());
     var tglDftr = parseFlexDate(dataForm.tglDaftar) || new Date();
+    var tglLahirK = parseFlexDate(dataForm.tglLahir)  || '';
 
     // Ambil info posisi dari MPP
     var posisi = dataForm.posisi || '';
@@ -1189,7 +1191,8 @@ function tambahKandidat(dataForm) {
       '','','','', // Offering
       '',        // TGL HIRED
       now,       // TERAKHIR DIUPDATE
-      now        // TIMESTAMP INPUT
+      now,        // TIMESTAMP INPUT
+      tglLahirK  // TGL LAHIR
     ];
 
     sheet.appendRow(row);
@@ -1496,7 +1499,7 @@ var SHEET_HASIL_PSI = 'db_hasil_psikotes';
 var HEADERS_TOKEN_PSI = [
   'TOKEN','KANDIDAT_ID','MPP_ID','NAMA_PESERTA','EMAIL_PESERTA',
   'POSISI','TGL_DIBUAT','TGL_EXPIRED','STATUS',
-  'TGL_MULAI','TGL_SELESAI','IP_ADDRESS','TAB_SWITCH_COUNT','DIBUAT_OLEH'
+  'TGL_MULAI','TGL_SELESAI','IP_ADDRESS','TAB_SWITCH_COUNT','DIBUAT_OLEH','USIA_PESERTA'
 ];
 
 // ────────────────────────────────────────────────────────────────
@@ -1569,6 +1572,20 @@ function buatTokenPeserta(dataForm) {
     var now     = new Date();
     var expired = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // +7 hari
 
+    // Hitung usia dari tglLahir kandidat
+    var usiaPeserta = 25; // default jika tidak ada data
+    if (dataForm.tglLahir) {
+      var tglLahirObj = parseFlexDate(dataForm.tglLahir);
+      if (tglLahirObj) {
+        var th  = now.getFullYear() - tglLahirObj.getFullYear();
+        var bln = now.getMonth()    - tglLahirObj.getMonth();
+        if (bln < 0 || (bln === 0 && now.getDate() < tglLahirObj.getDate())) th--;
+        usiaPeserta = th;
+      }
+    } else if (dataForm.usia) {
+      usiaPeserta = parseInt(dataForm.usia) || 25;
+    }
+
     var row = [
       token,
       dataForm.kandidatId  || '',
@@ -1583,7 +1600,8 @@ function buatTokenPeserta(dataForm) {
       '',              // TGL_SELESAI
       '',              // IP_ADDRESS
       0,               // TAB_SWITCH_COUNT
-      'Admin HR'       // DIBUAT_OLEH
+      'Admin HR',       // DIBUAT_OLEH
+      usiaPeserta      // USIA_PESERTA
     ];
 
     sheet.appendRow(row);
